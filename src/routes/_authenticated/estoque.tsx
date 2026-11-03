@@ -33,9 +33,10 @@ type Saldo = {
   estoque_minimo: number; custo_unitario: number | null; fornecedor_padrao: string | null; saldo: number;
 };
 type Reposicao = Saldo & { quantidade_sugerida: number };
+type MovTipo = "entrada" | "saida" | "ajuste" | "troca";
 type Movimentacao = {
-  id: string; peca_id: string; tipo: "entrada" | "saida" | "ajuste";
-  quantidade: number; custo_unitario: number | null; origem: string;
+  id: string; peca_id: string; tipo: MovTipo;
+  quantidade: number; custo_unitario: number | null; numero_serie: string | null; origem: string;
   observacao: string | null; ordem_servico_id: string | null; created_at: string;
   pecas_catalogo?: { nome: string } | null;
 };
@@ -49,6 +50,7 @@ const toneCls = {
   ok: "bg-[color:var(--success)]/15 text-[color:var(--success)] border-[color:var(--success)]/30",
   warn: "bg-[color:var(--warning)]/15 text-[color:var(--warning)] border-[color:var(--warning)]/30",
   danger: "bg-destructive/15 text-destructive border-destructive/30",
+  troca: "bg-purple-500/15 text-purple-600 border-purple-500/30",
 };
 
 function Page() {
@@ -81,6 +83,26 @@ function Page() {
       r.custo_unitario ? (Number(r.custo_unitario) * r.quantidade_sugerida).toFixed(2) : "",
     ]);
     downloadXLSX(`lista-compras-${new Date().toISOString().slice(0, 10)}.xlsx`, cols, rows);
+  }
+
+  function exportarMovimentacoes() {
+    const cols = ["Data", "Peça", "Tipo", "Quantidade", "Nº de Série", "Origem", "Observação"];
+    const tipoLabel: Record<MovTipo, string> = {
+      entrada: "Entrada",
+      saida: "Saída",
+      ajuste: "Ajuste",
+      troca: "Troca",
+    };
+    const rows = (movs ?? []).map((m) => [
+      new Date(m.created_at).toLocaleString("pt-BR"),
+      m.pecas_catalogo?.nome ?? "—",
+      tipoLabel[m.tipo] ?? m.tipo,
+      `${m.tipo === "saida" || m.tipo === "troca" ? "-" : "+"}${m.quantidade}`,
+      m.numero_serie ?? "—",
+      m.origem === "auto_os" ? "Automática (OS)" : "Manual",
+      m.observacao ?? "",
+    ]);
+    downloadXLSX(`movimentacoes-estoque-${new Date().toISOString().slice(0, 10)}.xlsx`, cols, rows);
   }
 
   return (
@@ -177,15 +199,26 @@ function Page() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="movs" className="mt-4">
+        <TabsContent value="movs" className="mt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              {movs?.length ?? 0} movimentação(ões) recente(s).
+            </p>
+            <Button size="sm" variant="outline" onClick={exportarMovimentacoes} disabled={!movs?.length}>
+              <Download className="h-4 w-4 mr-1" /> Exportar movimentações (XLSX)
+            </Button>
+          </div>
           <Card>
-            <CardHeader><CardTitle className="text-sm">Últimas 500 movimentações</CardTitle></CardHeader>
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm">Histórico de movimentações</CardTitle>
+            </CardHeader>
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Data</TableHead>
                     <TableHead>Peça</TableHead>
+                    <TableHead>Nº de série</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead className="text-right">Qtde.</TableHead>
                     <TableHead>Origem</TableHead>
@@ -194,19 +227,23 @@ function Page() {
                 </TableHeader>
                 <TableBody>
                   {(movs ?? []).length === 0 ? (
-                    <TableRow><TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-8">Sem movimentações registradas.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">Sem movimentações registradas.</TableCell></TableRow>
                   ) : movs!.map((m) => (
                     <TableRow key={m.id}>
                       <TableCell className="text-xs">{new Date(m.created_at).toLocaleString("pt-BR")}</TableCell>
                       <TableCell className="font-medium">{m.pecas_catalogo?.nome ?? "—"}</TableCell>
+                      <TableCell className="text-xs font-mono text-muted-foreground">{m.numero_serie ?? "—"}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={
                           m.tipo === "entrada" ? toneCls.ok :
-                          m.tipo === "saida" ? toneCls.danger : ""
-                        }>{m.tipo}</Badge>
+                          m.tipo === "saida" ? toneCls.danger :
+                          m.tipo === "troca" ? toneCls.troca : ""
+                        }>
+                          {m.tipo === "troca" ? "troca" : m.tipo}
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {m.tipo === "saida" ? "-" : "+"}{m.quantidade}
+                        {m.tipo === "saida" || m.tipo === "troca" ? "-" : "+"}{m.quantidade}
                       </TableCell>
                       <TableCell>
                         {m.origem === "auto_os" ? (
@@ -233,9 +270,10 @@ function Page() {
 function NovaMovDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const qc = useQueryClient();
   const [pecaId, setPecaId] = useState<string | null>(null);
-  const [tipo, setTipo] = useState<"entrada" | "ajuste">("entrada");
-  const [qtd, setQtd] = useState(0);
+  const [tipo, setTipo] = useState<"entrada" | "ajuste" | "troca">("entrada");
+  const [qtd, setQtd] = useState(1);
   const [custo, setCusto] = useState("");
+  const [numeroSerie, setNumeroSerie] = useState("");
   const [obs, setObs] = useState("");
   const { data: pecas } = useQuery({
     queryKey: ["pecas-lite"],
@@ -244,19 +282,32 @@ function NovaMovDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
   });
   const opts = useMemo(() => (pecas ?? []).map((p) => ({ value: p.id, label: p.nome })), [pecas]);
 
-  function reset() { setPecaId(null); setTipo("entrada"); setQtd(0); setCusto(""); setObs(""); }
+  function reset() {
+    setPecaId(null);
+    setTipo("entrada");
+    setQtd(1);
+    setCusto("");
+    setNumeroSerie("");
+    setObs("");
+  }
   async function salvar() {
     if (!pecaId || !qtd) return toast.error("Selecione a peça e a quantidade.");
     const { error } = await (supabase as any).from("estoque_movimentacoes").insert({
-      peca_id: pecaId, tipo, quantidade: Number(qtd), custo_unitario: custo ? Number(custo) : null,
-      observacao: obs || null, origem: "manual",
+      peca_id: pecaId,
+      tipo,
+      quantidade: Number(qtd),
+      custo_unitario: custo ? Number(custo) : null,
+      numero_serie: numeroSerie.trim() || null,
+      observacao: obs.trim() || null,
+      origem: "manual",
     });
     if (error) return toast.error(error.message);
-    toast.success("Movimentação registrada");
+    toast.success("Movimentação registrada com sucesso");
     qc.invalidateQueries({ queryKey: ["vw_estoque_saldo"] });
     qc.invalidateQueries({ queryKey: ["vw_pecas_reposicao"] });
     qc.invalidateQueries({ queryKey: ["estoque_movimentacoes"] });
-    reset(); onOpenChange(false);
+    reset();
+    onOpenChange(false);
   }
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
@@ -273,13 +324,27 @@ function NovaMovDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
               <select className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={tipo} onChange={(e) => setTipo(e.target.value as any)}>
                 <option value="entrada">Entrada (compra)</option>
                 <option value="ajuste">Ajuste de inventário</option>
+                <option value="troca">Troca (substituição)</option>
               </select>
-              <p className="text-[10px] text-muted-foreground mt-1">Saídas são geradas automaticamente pelas OS.</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Troca debita o estoque do componente substituído.</p>
             </div>
-            <div><Label>Quantidade *</Label><Input type="number" min={1} value={qtd} onChange={(e) => setQtd(Number(e.target.value))} /></div>
+            <div>
+              <Label>Quantidade *</Label>
+              <Input type="number" min={1} value={qtd} onChange={(e) => setQtd(Number(e.target.value))} />
+            </div>
           </div>
-          <div><Label>Custo unitário (R$)</Label><Input type="number" step="0.01" value={custo} onChange={(e) => setCusto(e.target.value)} /></div>
-          <div><Label>Observação</Label><Textarea rows={2} value={obs} onChange={(e) => setObs(e.target.value)} /></div>
+          <div>
+            <Label>Número de série</Label>
+            <Input placeholder="Opcional / Nº de série do item" value={numeroSerie} onChange={(e) => setNumeroSerie(e.target.value)} />
+          </div>
+          <div>
+            <Label>Custo unitário (R$)</Label>
+            <Input type="number" step="0.01" placeholder="Opcional" value={custo} onChange={(e) => setCusto(e.target.value)} />
+          </div>
+          <div>
+            <Label>Observação</Label>
+            <Textarea rows={2} placeholder="Motivo da movimentação ou informações adicionais" value={obs} onChange={(e) => setObs(e.target.value)} />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>

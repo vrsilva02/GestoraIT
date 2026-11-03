@@ -31,14 +31,21 @@ type Row = {
   nome: string;
   categoria: string;
   fabricante: string | null;
+  numero_serie: string | null;
   modelos_compativeis: string[];
   estoque_minimo: number;
   custo_unitario: number | null;
   fornecedor_padrao: string | null;
 };
 const initial = {
-  nome: "", categoria: "", fabricante: "", modelos_compativeis: "",
-  estoque_minimo: 0, custo_unitario: "", fornecedor_padrao: "",
+  nome: "",
+  categoria: "",
+  fabricante: "",
+  numero_serie: "",
+  modelos_compativeis: "",
+  estoque_minimo: 0,
+  custo_unitario: "",
+  fornecedor_padrao: "",
 };
 
 function Page() {
@@ -58,12 +65,18 @@ function Page() {
     },
   });
 
-  function openNew() { setEditing(null); setForm(initial); setOpen(true); }
+  function openNew() {
+    setEditing(null);
+    setForm(initial);
+    setOpen(true);
+  }
   function openEdit(r: Row) {
     setEditing(r);
     setForm({
-      nome: r.nome, categoria: r.categoria,
+      nome: r.nome,
+      categoria: r.categoria,
       fabricante: r.fabricante ?? "",
+      numero_serie: r.numero_serie ?? "",
       modelos_compativeis: (r.modelos_compativeis ?? []).join(", "),
       estoque_minimo: r.estoque_minimo,
       custo_unitario: r.custo_unitario?.toString() ?? "",
@@ -76,6 +89,7 @@ function Page() {
       nome: form.nome.trim(),
       categoria: form.categoria.trim(),
       fabricante: form.fabricante.trim() || null,
+      numero_serie: form.numero_serie.trim() || null,
       modelos_compativeis: form.modelos_compativeis.split(",").map((s) => s.trim()).filter(Boolean),
       estoque_minimo: Number(form.estoque_minimo) || 0,
       custo_unitario: form.custo_unitario ? Number(form.custo_unitario) : null,
@@ -87,6 +101,7 @@ function Page() {
     if (error) return toast.error(error.message);
     toast.success("Salvo");
     qc.invalidateQueries({ queryKey: ["pecas_catalogo"] });
+    qc.invalidateQueries({ queryKey: ["vw_estoque_saldo"] });
   }
   async function remove(r: Row) {
     const ok = await confirm({
@@ -99,12 +114,15 @@ function Page() {
     if (!ok) return;
     const { error } = await (supabase as any).from("pecas_catalogo").delete().eq("id", r.id);
     if (error) return toast.error(error.message);
+    toast.success("Peça excluída");
     qc.invalidateQueries({ queryKey: ["pecas_catalogo"] });
+    qc.invalidateQueries({ queryKey: ["vw_estoque_saldo"] });
   }
 
   const columns: Column<Row>[] = [
     { id: "nome", header: "Peça", accessor: (r) => <span className="font-medium">{r.nome}</span>, sortValue: (r) => r.nome, searchValue: (r) => r.nome, exportValue: (r) => r.nome },
     { id: "categoria", header: "Categoria", accessor: (r) => <Badge variant="outline">{r.categoria}</Badge>, sortValue: (r) => r.categoria, searchValue: (r) => r.categoria, exportValue: (r) => r.categoria },
+    { id: "numero_serie", header: "Nº de série", accessor: (r) => r.numero_serie ?? "—", searchValue: (r) => r.numero_serie, exportValue: (r) => r.numero_serie },
     { id: "fabricante", header: "Fabricante", accessor: (r) => r.fabricante ?? "—", searchValue: (r) => r.fabricante, exportValue: (r) => r.fabricante },
     { id: "modelos", header: "Modelos compatíveis", accessor: (r) => (r.modelos_compativeis?.length ? <span className="text-xs">{r.modelos_compativeis.join(", ")}</span> : "—"), searchValue: (r) => r.modelos_compativeis?.join(" "), exportValue: (r) => r.modelos_compativeis?.join("; ") },
     { id: "min", header: "Mín.", accessor: (r) => <span className="tabular-nums">{r.estoque_minimo}</span>, sortValue: (r) => r.estoque_minimo, exportValue: (r) => r.estoque_minimo },
@@ -116,8 +134,8 @@ function Page() {
         <div className="flex gap-1">
           {canWrite && (
             <>
-              <Button size="icon" variant="ghost" onClick={() => openEdit(r)}><Pencil className="h-4 w-4" /></Button>
-              <Button size="icon" variant="ghost" onClick={() => remove(r)}><Trash2 className="h-4 w-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={() => openEdit(r)} title="Editar"><Pencil className="h-4 w-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={() => remove(r)} title="Excluir"><Trash2 className="h-4 w-4" /></Button>
             </>
           )}
         </div>
@@ -154,8 +172,12 @@ function Page() {
           <div><Label>Categoria *</Label><Input required placeholder="ex: HD, Memória, Fonte" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} /></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
+          <div><Label>Número de série</Label><Input placeholder="Opcional / Nº de série" value={form.numero_serie} onChange={(e) => setForm({ ...form, numero_serie: e.target.value })} /></div>
           <div><Label>Fabricante</Label><Input value={form.fabricante} onChange={(e) => setForm({ ...form, fabricante: e.target.value })} /></div>
-          <div><Label>Fornecedor padrão</Label><Input value={form.fornecedor_padrao} onChange={(e) => setForm({ ...form, fornecedor_padrao: e.target.value })} /></div>
+        </div>
+        <div>
+          <Label>Fornecedor padrão</Label>
+          <Input value={form.fornecedor_padrao} onChange={(e) => setForm({ ...form, fornecedor_padrao: e.target.value })} />
         </div>
         <div>
           <Label>Modelos compatíveis</Label>

@@ -836,7 +836,8 @@ export type Database = {
           peca_id: string
           quantidade: number
           tipo: Database["public"]["Enums"]["mov_tipo"]
-        }
+                  numero_serie: string | null
+}
         Insert: {
           created_at?: string
           criado_por?: string | null
@@ -848,7 +849,8 @@ export type Database = {
           peca_id: string
           quantidade: number
           tipo: Database["public"]["Enums"]["mov_tipo"]
-        }
+                  numero_serie?: string | null
+}
         Update: {
           created_at?: string
           criado_por?: string | null
@@ -860,7 +862,8 @@ export type Database = {
           peca_id?: string
           quantidade?: number
           tipo?: Database["public"]["Enums"]["mov_tipo"]
-        }
+                  numero_serie?: string | null
+}
         Relationships: [
           {
             foreignKeyName: "estoque_movimentacoes_peca_id_fkey"
@@ -1408,7 +1411,8 @@ export type Database = {
           nome: string
           observacao: string | null
           updated_at: string
-        }
+                  numero_serie: string | null
+}
         Insert: {
           categoria: string
           created_at?: string
@@ -1421,7 +1425,8 @@ export type Database = {
           nome: string
           observacao?: string | null
           updated_at?: string
-        }
+                  numero_serie?: string | null
+}
         Update: {
           categoria?: string
           created_at?: string
@@ -1434,7 +1439,8 @@ export type Database = {
           nome?: string
           observacao?: string | null
           updated_at?: string
-        }
+                  numero_serie?: string | null
+}
         Relationships: []
       }
       produtos_aliases: {
@@ -2081,7 +2087,7 @@ export type Database = {
         | "tecnico"
       license_status: "disponivel" | "alocada" | "expirada" | "revogada"
       license_tipo: "OEM" | "Retail" | "Volume" | "CSP"
-      mov_tipo: "entrada" | "saida" | "ajuste"
+      mov_tipo: "entrada" | "saida" | "ajuste" | "troca"
       os_prioridade: "baixa" | "media" | "alta" | "critica"
       os_status:
         | "aberta"
@@ -2229,7 +2235,7 @@ export const Constants = {
       ],
       license_status: ["disponivel", "alocada", "expirada", "revogada"],
       license_tipo: ["OEM", "Retail", "Volume", "CSP"],
-      mov_tipo: ["entrada", "saida", "ajuste"],
+      mov_tipo: ["entrada", "saida", "ajuste", "troca"],
       os_prioridade: ["baixa", "media", "alta", "critica"],
       os_status: [
         "aberta",

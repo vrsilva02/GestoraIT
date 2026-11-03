@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,10 +11,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Combobox } from "@/components/combobox";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
-import { AlertTriangle, CheckCircle2, Package, Trash2, Clock, DollarSign, History } from "lucide-react";
+import { useConfirm } from "@/components/confirm-dialog";
+import { AlertTriangle, CheckCircle2, Package, Trash2, Clock, DollarSign, History, Pencil } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/ordens-servico_/$id")({
   component: Page,
@@ -28,8 +30,9 @@ export const Route = createFileRoute("/_authenticated/ordens-servico_/$id")({
 
 type OSDetail = {
   id: string; numero: number; ativo_id: string; descricao_defeito: string;
-  prioridade: string; status: string; data_abertura: string; data_conclusao: string | null;
-  custo_total: number | null; observacoes_tecnicas: string | null;
+  prioridade: "baixa" | "media" | "alta" | "critica"; status: "aberta" | "em_andamento" | "aguardando_peca" | "concluida" | "cancelada";
+  data_abertura: string; data_conclusao: string | null;
+  custo_total: number | null; observacoes: string | null; observacoes_tecnicas: string | null;
   ativos?: { hostname: string; tipo: string; setor: string | null; modelo?: string | null } | null;
 };
 type OSHistorico = {
@@ -46,11 +49,22 @@ type PecaUsada = {
 };
 type Sugestao = { peca_id: string; nome: string; saldo: number; custo_unitario: number | null };
 
+const STATUS_LABELS: Record<string, string> = {
+  aberta: "Aberta",
+  em_andamento: "Em andamento",
+  aguardando_peca: "Aguardando peça",
+  concluida: "Concluída",
+  cancelada: "Cancelada",
+};
+
 function Page() {
-  const { canOperateOS, user } = useAuth();
+  const { canOperateOS, canWrite, user } = useAuth();
   const { id } = Route.useParams();
+  const navigate = useNavigate();
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [addOpen, setAddOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const { data: os } = useQuery({
     queryKey: ["os", id],
@@ -66,7 +80,11 @@ function Page() {
   });
 
   async function mudarStatus(novo: string) {
-    const { error } = await (supabase as any).from("ordens_servico").update({ status: novo }).eq("id", id);
+    const patch: any = { status: novo };
+    if (novo === "concluida" && !os?.data_conclusao) {
+      patch.data_conclusao = new Date().toISOString();
+    }
+    const { error } = await (supabase as any).from("ordens_servico").update(patch).eq("id", id);
     if (error) return toast.error(error.message);
     toast.success("Status atualizado");
     qc.invalidateQueries({ queryKey: ["os", id] });
@@ -74,11 +92,36 @@ function Page() {
     qc.invalidateQueries({ queryKey: ["ordens_servico"] });
     qc.invalidateQueries({ queryKey: ["ativos"] });
   }
+
   async function removerPeca(pid: string) {
     const { error } = await (supabase as any).from("ordens_servico_pecas").delete().eq("id", pid);
     if (error) return toast.error(error.message);
     qc.invalidateQueries({ queryKey: ["os_pecas", id] });
     qc.invalidateQueries({ queryKey: ["vw_estoque_saldo"] });
+  }
+
+  async function excluirOS() {
+    if (!os) return;
+    const ok = await confirm({
+      title: `Excluir OS #${os.numero}?`,
+      description: `Esta ação excluirá permanentemente a OS #${os.numero} vinculada ao ativo ${os.ativos?.hostname ?? "—"}, além de peças associadas e histórico.`,
+      tone: "danger",
+      impact: [
+        { label: "OS", value: `#${os.numero}` },
+        { label: "Ativo", value: os.ativos?.hostname ?? "—" },
+        { label: "Status", value: STATUS_LABELS[os.status] ?? os.status },
+      ],
+      confirmLabel: "Excluir OS",
+    });
+    if (!ok) return;
+
+    const { error } = await (supabase as any).from("ordens_servico").delete().eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success(`OS #${os.numero} excluída com sucesso`);
+    qc.invalidateQueries({ queryKey: ["ordens_servico"] });
+    qc.invalidateQueries({ queryKey: ["ativos"] });
+    qc.invalidateQueries({ queryKey: ["vw_estoque_saldo"] });
+    navigate({ to: "/ordens-servico" });
   }
 
   const totalPecas = (pecas ?? []).reduce((s, p) => s + p.quantidade * Number(p.custo_unitario ?? 0), 0);
@@ -93,15 +136,26 @@ function Page() {
       <PageHeader
         title={`OS #${os.numero}`}
         description={<Link to="/ativos/$id" params={{ id: os.ativo_id }} className="hover:text-primary">{os.ativos?.hostname}</Link>}
-       
         actions={
-          canOperateOS && os.status !== "concluida" && os.status !== "cancelada" ? (
-            <div className="flex gap-2">
-              {os.status !== "em_andamento" && <Button size="sm" variant="outline" onClick={() => mudarStatus("em_andamento")}>Iniciar</Button>}
-              {os.status !== "aguardando_peca" && <Button size="sm" variant="outline" onClick={() => mudarStatus("aguardando_peca")}>Aguardar peça</Button>}
-              <Button size="sm" onClick={() => mudarStatus("concluida")}><CheckCircle2 className="h-4 w-4 mr-1" /> Concluir</Button>
-            </div>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-2">
+            {canOperateOS && os.status !== "concluida" && os.status !== "cancelada" && (
+              <>
+                {os.status !== "em_andamento" && <Button size="sm" variant="outline" onClick={() => mudarStatus("em_andamento")}>Iniciar</Button>}
+                {os.status !== "aguardando_peca" && <Button size="sm" variant="outline" onClick={() => mudarStatus("aguardando_peca")}>Aguardar peça</Button>}
+                <Button size="sm" onClick={() => mudarStatus("concluida")}><CheckCircle2 className="h-4 w-4 mr-1" /> Concluir</Button>
+              </>
+            )}
+            {canWrite && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
+                  <Pencil className="h-4 w-4 mr-1" /> Editar OS
+                </Button>
+                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={excluirOS}>
+                  <Trash2 className="h-4 w-4 mr-1" /> Excluir OS
+                </Button>
+              </>
+            )}
+          </div>
         }
       />
 
@@ -110,15 +164,33 @@ function Page() {
           <CardHeader>
             <CardTitle className="text-sm flex items-center justify-between">
               Defeito reportado
-              <Badge variant="outline">{os.prioridade}</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">{os.prioridade}</Badge>
+                {canWrite && (
+                  <Button size="icon" variant="ghost" className="h-6 w-6" title="Editar OS" onClick={() => setEditOpen(true)}>
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
             </CardTitle>
           </CardHeader>
-          <CardContent><p className="text-sm whitespace-pre-wrap">{os.descricao_defeito}</p></CardContent>
+          <CardContent>
+            <p className="text-sm whitespace-pre-wrap">{os.descricao_defeito}</p>
+            {(os.observacoes || os.observacoes_tecnicas) && (
+              <div className="mt-3 pt-3 border-t">
+                <span className="text-xs font-semibold text-muted-foreground uppercase">Observações:</span>
+                <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">{os.observacoes || os.observacoes_tecnicas}</p>
+              </div>
+            )}
+          </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle className="text-sm">Resumo</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-muted-foreground">Status</span><Badge>{os.status}</Badge></div>
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Status</span>
+              <Badge variant="outline">{STATUS_LABELS[os.status] ?? os.status}</Badge>
+            </div>
             <div className="flex justify-between"><span className="text-muted-foreground">Aberta em</span><span className="tabular-nums">{new Date(os.data_abertura).toLocaleString("pt-BR")}</span></div>
             {os.data_conclusao && <div className="flex justify-between"><span className="text-muted-foreground">Fechada em</span><span className="tabular-nums">{new Date(os.data_conclusao).toLocaleString("pt-BR")}</span></div>}
             {tempoMin != null && (
@@ -156,12 +228,12 @@ function Page() {
                     <TableCell className="text-xs">
                       {h.status_anterior ? (
                         <div className="flex items-center gap-1">
-                          <span className="text-muted-foreground line-through">{h.status_anterior}</span>
+                          <span className="text-muted-foreground line-through">{STATUS_LABELS[h.status_anterior] ?? h.status_anterior}</span>
                           <span>→</span>
-                          <span className="font-medium">{h.status_novo}</span>
+                          <span className="font-medium">{STATUS_LABELS[h.status_novo] ?? h.status_novo}</span>
                         </div>
                       ) : (
-                        <span className="font-medium">{h.status_novo} (Abertura)</span>
+                        <span className="font-medium">{STATUS_LABELS[h.status_novo] ?? h.status_novo} (Abertura)</span>
                       )}
                     </TableCell>
                     <TableCell className="text-xs">{h.usuarios?.nome ?? "Sistema"}</TableCell>
@@ -218,7 +290,97 @@ function Page() {
       <AnexosCard osId={id} canOperate={canOperateOS} uploaderId={user?.id ?? null} />
 
       <AddPecaDialog open={addOpen} onOpenChange={setAddOpen} osId={id} ativoTipo={os.ativos?.tipo ?? null} onWaitPart={() => mudarStatus("aguardando_peca")} />
+
+      {editOpen && (
+        <EditarOSDetailDialog
+          os={os}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+        />
+      )}
     </>
+  );
+}
+
+function EditarOSDetailDialog({ os, open, onOpenChange }: { os: OSDetail; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState(os.status);
+  const [prioridade, setPrioridade] = useState(os.prioridade);
+  const [descricao, setDescricao] = useState(os.descricao_defeito);
+  const [observacoes, setObservacoes] = useState(os.observacoes || os.observacoes_tecnicas || "");
+
+  async function salvar() {
+    if (!descricao.trim()) return toast.error("A descrição do defeito é obrigatória.");
+    const patch: any = {
+      status,
+      prioridade,
+      descricao_defeito: descricao.trim(),
+      observacoes: observacoes.trim() || null,
+    };
+    if (status === "concluida" && !os.data_conclusao) {
+      patch.data_conclusao = new Date().toISOString();
+    }
+    const { error } = await (supabase as any).from("ordens_servico").update(patch).eq("id", os.id);
+    if (error) return toast.error(error.message);
+    toast.success("Ordem de serviço atualizada com sucesso");
+    qc.invalidateQueries({ queryKey: ["os", os.id] });
+    qc.invalidateQueries({ queryKey: ["os_historico", os.id] });
+    qc.invalidateQueries({ queryKey: ["ordens_servico"] });
+    qc.invalidateQueries({ queryKey: ["ativos"] });
+    onOpenChange(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Editar OS #{os.numero} ({os.ativos?.hostname ?? "Ativo"})</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Status</Label>
+              <select
+                className="w-full h-9 rounded-md border bg-background px-2 text-sm"
+                value={status}
+                onChange={(e) => setStatus(e.target.value as any)}
+              >
+                <option value="aberta">Aberta</option>
+                <option value="em_andamento">Em andamento</option>
+                <option value="aguardando_peca">Aguardando peça</option>
+                <option value="concluida">Concluída</option>
+                <option value="cancelada">Cancelada</option>
+              </select>
+            </div>
+            <div>
+              <Label>Prioridade</Label>
+              <select
+                className="w-full h-9 rounded-md border bg-background px-2 text-sm"
+                value={prioridade}
+                onChange={(e) => setPrioridade(e.target.value as any)}
+              >
+                <option value="baixa">Baixa</option>
+                <option value="media">Média</option>
+                <option value="alta">Alta</option>
+                <option value="critica">Crítica</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <Label>Descrição do defeito *</Label>
+            <Textarea rows={3} value={descricao} onChange={(e) => setDescricao(e.target.value)} />
+          </div>
+          <div>
+            <Label>Observações</Label>
+            <Textarea rows={2} placeholder="Observações adicionais ou notas de encerramento" value={observacoes} onChange={(e) => setObservacoes(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button onClick={salvar}>Salvar alterações</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -248,6 +410,7 @@ function AddPecaDialog({ open, onOpenChange, osId, ativoTipo, onWaitPart }: {
   const semEstoque = selected && selected.saldo <= 0;
 
   function reset() { setPecaId(null); setQtd(1); }
+
   async function salvar() {
     if (!pecaId || !qtd) return toast.error("Selecione a peça e a quantidade.");
     if (semEstoque) return toast.error("Peça sem saldo em estoque.");
@@ -392,7 +555,7 @@ function AnexosCard({ osId, canOperate, uploaderId }: { osId: string; canOperate
   }
 
   async function remover(id: string, path: string) {
-    if (!confirm("Remover esta evidência?")) return;
+    if (!window.confirm("Remover esta evidência?")) return;
     const { error } = await (supabase as any).from("ordens_servico_anexos").delete().eq("id", id);
     if (error) return toast.error(error.message);
     const { error: sErr } = await supabase.storage.from("os-evidencias").remove([path]);

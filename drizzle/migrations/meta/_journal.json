@@ -43,6 +43,13 @@
       "when": 1792769195907,
       "tag": "0005_security_fixes_and_load_metrics",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793710800000,
+      "tag": "0006_os_gestao_e_estoque_melhorias",
+      "breakpoints": true
     }
   ]
 }

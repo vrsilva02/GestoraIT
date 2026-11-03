@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,9 +14,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Combobox } from "@/components/combobox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, ShieldCheck, Wrench, Plus, ChevronRight } from "lucide-react";
+import { AlertTriangle, ShieldCheck, Wrench, Plus, ChevronRight, Pencil, Trash2, Download } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { useConfirm } from "@/components/confirm-dialog";
+import { downloadXLSX } from "@/lib/export";
 
 export const Route = createFileRoute("/_authenticated/ordens-servico")({
   component: Page,
@@ -30,10 +32,17 @@ export const Route = createFileRoute("/_authenticated/ordens-servico")({
 
 type StatusOS = "aberta" | "em_andamento" | "aguardando_peca" | "concluida" | "cancelada";
 type OS = {
-  id: string; numero: number; ativo_id: string; descricao_defeito: string;
-  prioridade: "baixa" | "media" | "alta" | "critica"; status: StatusOS;
-  data_abertura: string; data_conclusao: string | null; custo_total: number | null;
+  id: string;
+  numero: number;
+  ativo_id: string;
+  descricao_defeito: string;
+  prioridade: "baixa" | "media" | "alta" | "critica";
+  status: StatusOS;
+  data_abertura: string;
+  data_conclusao: string | null;
+  custo_total: number | null;
   aberto_por: string | null;
+  observacoes?: string | null;
   ativos?: { hostname: string; tipo: string; setor: string | null } | null;
 };
 
@@ -51,10 +60,20 @@ const PRIO_TONE: Record<OS["prioridade"], string> = {
   critica: "bg-destructive/15 text-destructive border-destructive/30",
 };
 
+const STATUS_LABELS: Record<StatusOS, string> = {
+  aberta: "Aberta",
+  em_andamento: "Em andamento",
+  aguardando_peca: "Aguardando peça",
+  concluida: "Concluída",
+  cancelada: "Cancelada",
+};
+
 function Page() {
   const { canWrite } = useAuth();
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [newOpen, setNewOpen] = useState(false);
+  const [editingOS, setEditingOS] = useState<OS | null>(null);
   const [drag, setDrag] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     status: "todos",
@@ -69,7 +88,7 @@ function Page() {
       if (filters.status !== "todos") q = q.eq("status", filters.status);
       if (filters.periodoInicio) q = q.gte("data_abertura", filters.periodoInicio);
       if (filters.periodoFim) q = q.lte("data_abertura", filters.periodoFim);
-      
+
       const { data, error } = await q.order("data_abertura", { ascending: false });
       if (error) throw error;
       return data as OS[];
@@ -84,12 +103,59 @@ function Page() {
 
   async function moveTo(id: string, novo: StatusOS) {
     const patch: any = { status: novo };
-    // trigger no banco lida com data_fim + status do ativo
     const { error } = await (supabase as any).from("ordens_servico").update(patch).eq("id", id);
     if (error) return toast.error(error.message);
     toast.success("Status atualizado");
     qc.invalidateQueries({ queryKey: ["ordens_servico"] });
     qc.invalidateQueries({ queryKey: ["ativos"] });
+  }
+
+  async function excluirOS(os: OS) {
+    const ok = await confirm({
+      title: `Excluir OS #${os.numero}?`,
+      description: `Esta ação excluirá permanentemente a OS #${os.numero} vinculada ao ativo ${os.ativos?.hostname ?? "—"}, além de peças associadas e histórico de apontamento.`,
+      tone: "danger",
+      impact: [
+        { label: "OS", value: `#${os.numero}` },
+        { label: "Ativo", value: os.ativos?.hostname ?? "—" },
+        { label: "Status", value: STATUS_LABELS[os.status] ?? os.status },
+      ],
+      confirmLabel: "Excluir OS",
+    });
+    if (!ok) return;
+
+    const { error } = await (supabase as any).from("ordens_servico").delete().eq("id", os.id);
+    if (error) return toast.error(error.message);
+    toast.success(`OS #${os.numero} excluída com sucesso`);
+    qc.invalidateQueries({ queryKey: ["ordens_servico"] });
+    qc.invalidateQueries({ queryKey: ["ativos"] });
+    qc.invalidateQueries({ queryKey: ["vw_estoque_saldo"] });
+  }
+
+  function exportarOS() {
+    const cols = [
+      "Número",
+      "Ativo",
+      "Tipo",
+      "Setor",
+      "Prioridade",
+      "Status",
+      "Defeito",
+      "Data Abertura",
+      "Data Conclusão",
+    ];
+    const exportRows = (rows ?? []).map((os) => [
+      os.numero,
+      os.ativos?.hostname ?? "—",
+      os.ativos?.tipo ?? "—",
+      os.ativos?.setor ?? "—",
+      os.prioridade.toUpperCase(),
+      STATUS_LABELS[os.status] ?? os.status,
+      os.descricao_defeito,
+      os.data_abertura ? new Date(os.data_abertura).toLocaleDateString("pt-BR") : "—",
+      os.data_conclusao ? new Date(os.data_conclusao).toLocaleDateString("pt-BR") : "—",
+    ]);
+    downloadXLSX(`ordens-servico-${new Date().toISOString().slice(0, 10)}.xlsx`, cols, exportRows);
   }
 
   return (
@@ -98,22 +164,22 @@ function Page() {
         title="Ordens de serviço"
         description="Kanban de reparos. Ao abrir uma OS, o ativo entra em manutenção automaticamente; ao concluir, volta ao status anterior."
         actions={
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 mr-4">
-              <Input 
-                type="date" 
-                className="h-8 w-32 text-xs" 
-                value={filters.periodoInicio} 
-                onChange={e => setFilters(f => ({ ...f, periodoInicio: e.target.value }))} 
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 mr-2">
+              <Input
+                type="date"
+                className="h-8 w-32 text-xs"
+                value={filters.periodoInicio}
+                onChange={(e) => setFilters((f) => ({ ...f, periodoInicio: e.target.value }))}
               />
               <span className="text-muted-foreground text-xs">até</span>
-              <Input 
-                type="date" 
-                className="h-8 w-32 text-xs" 
-                value={filters.periodoFim} 
-                onChange={e => setFilters(f => ({ ...f, periodoFim: e.target.value }))} 
+              <Input
+                type="date"
+                className="h-8 w-32 text-xs"
+                value={filters.periodoFim}
+                onChange={(e) => setFilters((f) => ({ ...f, periodoFim: e.target.value }))}
               />
-              <Select value={filters.status} onValueChange={v => setFilters(f => ({ ...f, status: v }))}>
+              <Select value={filters.status} onValueChange={(v) => setFilters((f) => ({ ...f, status: v }))}>
                 <SelectTrigger className="h-8 w-32 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos status</SelectItem>
@@ -121,10 +187,18 @@ function Page() {
                   <SelectItem value="em_andamento">Em andamento</SelectItem>
                   <SelectItem value="aguardando_peca">Aguardando peça</SelectItem>
                   <SelectItem value="concluida">Concluída</SelectItem>
+                  <SelectItem value="cancelada">Cancelada</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            {canWrite && <Button size="sm" onClick={() => setNewOpen(true)}><Plus className="h-4 w-4 mr-1" /> Nova OS</Button>}
+            <Button size="sm" variant="outline" onClick={exportarOS} disabled={!rows?.length}>
+              <Download className="h-4 w-4 mr-1" /> Exportar (XLSX)
+            </Button>
+            {canWrite && (
+              <Button size="sm" onClick={() => setNewOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" /> Nova OS
+              </Button>
+            )}
           </div>
         }
       />
@@ -148,7 +222,7 @@ function Page() {
                   draggable={canWrite}
                   onDragStart={() => setDrag(os.id)}
                   onDragEnd={() => setDrag(null)}
-                  className="cursor-grab active:cursor-grabbing hover:border-primary/60 transition"
+                  className="cursor-grab active:cursor-grabbing hover:border-primary/60 transition group relative"
                 >
                   <CardContent className="p-3 space-y-2">
                     <div className="flex items-start justify-between gap-2">
@@ -159,17 +233,48 @@ function Page() {
                       >
                         OS #{os.numero} <ChevronRight className="h-3 w-3" />
                       </Link>
-                      <Badge variant="outline" className={`text-[10px] ${PRIO_TONE[os.prioridade]}`}>
-                        {os.prioridade}
-                      </Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge variant="outline" className={`text-[10px] ${PRIO_TONE[os.prioridade]}`}>
+                          {os.prioridade}
+                        </Badge>
+                        {canWrite && (
+                          <div className="flex items-center">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                              title="Editar OS"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingOS(os);
+                              }}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                              title="Excluir OS"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                excluirOS(os);
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="text-xs text-muted-foreground">
                       <div className="font-medium text-foreground">{os.ativos?.hostname ?? "—"}</div>
                       <div>{os.ativos?.setor ?? ""}</div>
                     </div>
                     <p className="text-xs line-clamp-2">{os.descricao_defeito}</p>
-                    <div className="text-[10px] text-muted-foreground tabular-nums">
-                      Aberta em {new Date(os.data_abertura).toLocaleDateString("pt-BR")}
+                    <div className="text-[10px] text-muted-foreground tabular-nums flex items-center justify-between">
+                      <span>Aberta em {new Date(os.data_abertura).toLocaleDateString("pt-BR")}</span>
+                      {os.data_conclusao && <span>Concluída</span>}
                     </div>
                   </CardContent>
                 </Card>
@@ -183,7 +288,95 @@ function Page() {
       </div>
 
       <NovaOSDialog open={newOpen} onOpenChange={setNewOpen} />
+      {editingOS && (
+        <EditarOSDialog
+          os={editingOS}
+          open={!!editingOS}
+          onOpenChange={(v) => { if (!v) setEditingOS(null); }}
+        />
+      )}
     </>
+  );
+}
+
+function EditarOSDialog({ os, open, onOpenChange }: { os: OS; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState<StatusOS>(os.status);
+  const [prioridade, setPrioridade] = useState<OS["prioridade"]>(os.prioridade);
+  const [descricao, setDescricao] = useState(os.descricao_defeito);
+  const [observacoes, setObservacoes] = useState(os.observacoes ?? "");
+
+  async function salvar() {
+    if (!descricao.trim()) return toast.error("A descrição do defeito é obrigatória.");
+    const patch: any = {
+      status,
+      prioridade,
+      descricao_defeito: descricao.trim(),
+      observacoes: observacoes.trim() || null,
+    };
+    if (status === "concluida" && !os.data_conclusao) {
+      patch.data_conclusao = new Date().toISOString();
+    }
+    const { error } = await (supabase as any).from("ordens_servico").update(patch).eq("id", os.id);
+    if (error) return toast.error(error.message);
+    toast.success("Ordem de serviço atualizada com sucesso");
+    qc.invalidateQueries({ queryKey: ["ordens_servico"] });
+    qc.invalidateQueries({ queryKey: ["os", os.id] });
+    qc.invalidateQueries({ queryKey: ["ativos"] });
+    onOpenChange(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Editar OS #{os.numero} ({os.ativos?.hostname ?? "Ativo"})</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Status</Label>
+              <select
+                className="w-full h-9 rounded-md border bg-background px-2 text-sm"
+                value={status}
+                onChange={(e) => setStatus(e.target.value as StatusOS)}
+              >
+                <option value="aberta">Aberta</option>
+                <option value="em_andamento">Em andamento</option>
+                <option value="aguardando_peca">Aguardando peça</option>
+                <option value="concluida">Concluída</option>
+                <option value="cancelada">Cancelada</option>
+              </select>
+            </div>
+            <div>
+              <Label>Prioridade</Label>
+              <select
+                className="w-full h-9 rounded-md border bg-background px-2 text-sm"
+                value={prioridade}
+                onChange={(e) => setPrioridade(e.target.value as any)}
+              >
+                <option value="baixa">Baixa</option>
+                <option value="media">Média</option>
+                <option value="alta">Alta</option>
+                <option value="critica">Crítica</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <Label>Descrição do defeito *</Label>
+            <Textarea rows={3} value={descricao} onChange={(e) => setDescricao(e.target.value)} />
+          </div>
+          <div>
+            <Label>Observações</Label>
+            <Textarea rows={2} placeholder="Observações adicionais ou notas de encerramento" value={observacoes} onChange={(e) => setObservacoes(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button onClick={salvar}>Salvar alterações</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -204,7 +397,7 @@ function NovaOSDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v:
   const garantia = useMemo(() => {
     if (!ativo?.data_aquisicao || !ativo.vida_util_meses) return null;
     const d = new Date(ativo.data_aquisicao);
-    d.setMonth(d.getMonth() + 12); // assume 12 meses de garantia padrão
+    d.setMonth(d.getMonth() + 12);
     const emGarantia = d.getTime() > Date.now();
     return { data: d, emGarantia };
   }, [ativo]);
