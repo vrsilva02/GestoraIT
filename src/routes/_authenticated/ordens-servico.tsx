@@ -75,6 +75,7 @@ function Page() {
   const [newOpen, setNewOpen] = useState(false);
   const [editingOS, setEditingOS] = useState<OS | null>(null);
   const [drag, setDrag] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<StatusOS | null>(null);
   const [filters, setFilters] = useState({
     status: "todos",
     periodoInicio: "",
@@ -109,8 +110,11 @@ function Page() {
       patch.data_conclusao = null;
     }
     const { error } = await (supabase as any).from("ordens_servico").update(patch).eq("id", id);
-    if (error) return toast.error(error.message);
-    toast.success("Status atualizado");
+    if (error) {
+      console.error("Erro ao mover OS:", error);
+      return toast.error(error.message);
+    }
+    toast.success(`OS movida para ${STATUS_LABELS[novo] ?? novo}`);
     qc.invalidateQueries({ queryKey: ["ordens_servico"] });
     qc.invalidateQueries({ queryKey: ["ativos"] });
   }
@@ -212,9 +216,35 @@ function Page() {
         {COLS.map((c) => (
           <div
             key={c.key}
-            onDragOver={(e) => { if (canWrite) e.preventDefault(); }}
-            onDrop={() => { if (drag && canWrite) { moveTo(drag, c.key); setDrag(null); } }}
-            className={`rounded-lg border p-2 min-h-[400px] ${c.tone}`}
+            onDragOver={(e) => {
+              if (canWrite) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                if (dragOverCol !== c.key) setDragOverCol(c.key);
+              }
+            }}
+            onDragEnter={(e) => {
+              if (canWrite) {
+                e.preventDefault();
+                setDragOverCol(c.key);
+              }
+            }}
+            onDragLeave={(e) => {
+              if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+              setDragOverCol(null);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOverCol(null);
+              const osId = drag || e.dataTransfer.getData("text/plain");
+              if (osId && canWrite) {
+                moveTo(osId, c.key);
+                setDrag(null);
+              }
+            }}
+            className={`rounded-lg border p-2 min-h-[400px] transition-all ${c.tone} ${
+              dragOverCol === c.key ? "ring-2 ring-primary ring-offset-2 border-primary bg-primary/5" : ""
+            }`}
           >
             <div className="flex items-center justify-between px-1 pb-2">
               <h3 className="text-xs font-semibold uppercase tracking-wide">{c.title}</h3>
@@ -225,8 +255,15 @@ function Page() {
                 <Card
                   key={os.id}
                   draggable={canWrite}
-                  onDragStart={() => setDrag(os.id)}
-                  onDragEnd={() => setDrag(null)}
+                  onDragStart={(e) => {
+                    setDrag(os.id);
+                    e.dataTransfer.setData("text/plain", os.id);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragEnd={() => {
+                    setDrag(null);
+                    setDragOverCol(null);
+                  }}
                   className="cursor-grab active:cursor-grabbing hover:border-primary/60 transition group relative"
                 >
                   <CardContent className="p-3 space-y-2">
