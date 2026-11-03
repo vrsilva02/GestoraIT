@@ -41,13 +41,30 @@ function nz(v: string | undefined): string | null {
   return s === "" ? null : s;
 }
 
+function parseDate(v: string | undefined): string | null {
+  if (!v) return null;
+  const s = v.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    const dia = m[1].padStart(2, "0");
+    const mes = m[2].padStart(2, "0");
+    const ano = m[3];
+    return `${ano}-${mes}-${dia}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    return s.slice(0, 10);
+  }
+  return null;
+}
+
 /* ------------------------ Exportar ------------------------ */
 
 export async function exportAtivos() {
   const tid = toast.loading("Preparando exportação…");
   const { data, error } = await fetchAll<any>(
     "ativos",
-    "hostname, tipo, categoria, marca, modelo, numero_patrimonio, numero_serie, setor, status_ciclo_vida, usuarios(email), clientes(nome), valor_aquisicao, comprador",
+    "hostname, tipo, categoria, marca, modelo, numero_patrimonio, numero_serie, setor, status_ciclo_vida, usuarios(email), clientes(nome), valor_aquisicao, comprador, data_aquisicao, created_at",
     (q) => q.order("hostname"),
     { onProgress: (n) => toast.loading(`Baixando dados… ${n} registro(s)`, { id: tid }) },
   );
@@ -69,6 +86,8 @@ export async function exportAtivos() {
     a.clientes?.nome ?? "",
     a.valor_aquisicao ?? "",
     a.comprador ?? "",
+    a.data_aquisicao ? a.data_aquisicao.slice(0, 10) : "",
+    a.created_at ? a.created_at.slice(0, 10) : "",
   ]);
   toast.loading("Gerando arquivo XLSX…", { id: tid });
   const fname = `ativos_${new Date().toISOString().slice(0, 10)}.xlsx`;
@@ -94,12 +113,18 @@ export function downloadTemplate() {
     "MTR2.TECH",
     "4500,00",
     "Gerência de TI",
+    "2026-01-15",
+    "2026-01-20",
   ];
   // Exemplo mínimo: apenas hostname — Tipo, Categoria e Cliente são opcionais e ficam em branco.
-  const exemploMinimo = COLUMNS.map((c) => (c === "hostname" ? "SEM-TIPO-0002" : ""));
+  const exemploMinimo = COLUMNS.map((c) => {
+    if (c === "hostname") return "SEM-TIPO-0002";
+    if (c === "cliente") return "MTR2.TECH";
+    return "";
+  });
   const vazia = COLUMNS.map(() => "");
   downloadXLSX("template_ativos.xlsx", COLUMNS as unknown as string[], [exemplo, exemploMinimo, vazia]);
-  toast.success("Template baixado. Apenas hostname é obrigatório; Tipo, Categoria, Cliente e Comprador podem ficar em branco.");
+  toast.success("Template baixado. Hostname e Cliente são obrigatórios; os demais campos podem ficar em branco.");
 }
 
 
@@ -207,7 +232,21 @@ async function importarLinhas(
       continue;
     }
 
-    const payload = {
+    const rawDataAquisicao = r.data_aquisicao ?? r["data_compra"] ?? r["data aquisicao"] ?? r["data compra"];
+    const dataAquisicao = parseDate(rawDataAquisicao);
+    if (nz(rawDataAquisicao) && !dataAquisicao) {
+      rep.erros.push({ linha, motivo: "data_aquisicao inválida (use AAAA-MM-DD ou DD/MM/AAAA)" });
+      continue;
+    }
+
+    const rawDataCadastro = r.data_cadastro ?? r.created_at ?? r["data cadastro"] ?? r["data de cadastro"];
+    const dataCadastro = parseDate(rawDataCadastro);
+    if (nz(rawDataCadastro) && !dataCadastro) {
+      rep.erros.push({ linha, motivo: "data_cadastro inválida (use AAAA-MM-DD ou DD/MM/AAAA)" });
+      continue;
+    }
+
+    const payload: Record<string, any> = {
       ...valorPayload,
       hostname,
       tipo,
@@ -221,6 +260,8 @@ async function importarLinhas(
       usuario_responsavel_id: responsavelId,
       cliente_id: clienteId,
       comprador: nz(r.comprador),
+      data_aquisicao: dataAquisicao || null,
+      ...(dataCadastro ? { created_at: new Date(`${dataCadastro}T12:00:00Z`).toISOString() } : {}),
     };
 
     const key = `${clienteId}:::${hostname.toLowerCase()}`;
@@ -361,14 +402,17 @@ export function AtivosImportExport({ canWrite, onImported }: { canWrite: boolean
         onOpenChange={setOpen}
         scope="ativos"
         title="Importar ativos"
-        description="Envie um arquivo XLSX seguindo o template. Somente hostname é obrigatório — Tipo, Categoria, Cliente e Comprador são opcionais e podem ficar em branco. Ativos existentes (mesmo hostname) são atualizados; novos são criados. O responsável é vinculado quando o e-mail já existe em Usuários; o cliente é vinculado quando o nome já existe em Clientes."
-        requiredColumns={COLUMNS.filter((c) => c !== "valor_aquisicao")}
-        previewColumns={["hostname", "tipo", "categoria", "marca", "modelo", "status_ciclo_vida", "cliente", "valor_aquisicao", "comprador"]}
+        description="Envie um arquivo XLSX seguindo o template. Somente hostname e cliente são obrigatórios — Tipo, Categoria, Comprador, Data de compra e Data de cadastro são opcionais e podem ficar em branco. Ativos existentes (mesmo hostname para o cliente) são atualizados; novos são criados."
+        requiredColumns={COLUMNS.filter((c) => !["valor_aquisicao", "comprador", "data_aquisicao", "data_cadastro"].includes(c))}
+        previewColumns={["hostname", "tipo", "categoria", "marca", "modelo", "status_ciclo_vida", "cliente", "valor_aquisicao", "comprador", "data_aquisicao", "data_cadastro"]}
         renderPreviewCell={(r, c) =>
           c === "numero_patrimonio" ? <span className="font-mono">{r[c]}</span>
           : c === "tipo" && !(r[c] ?? "").trim() ? <span className="text-muted-foreground">Sem tipo</span>
           : c === "categoria" && !(r[c] ?? "").trim() ? <span className="text-muted-foreground">Sem categoria</span>
           : c === "cliente" && !(r[c] ?? "").trim() ? <span className="text-muted-foreground">Sem cliente</span>
+          : (c === "data_aquisicao" || c === "data_cadastro") && (r[c] ?? "").trim() ? (
+            <span className="tabular-nums font-mono text-xs">{parseDate(r[c]) ?? r[c]}</span>
+          )
           : r[c]
         }
 

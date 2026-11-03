@@ -84,6 +84,18 @@ describe("parseTabularFile com template XLSX", () => {
     expect(rows[0].valor_aquisicao).toBe("4500.9");
   });
 
+  it("preserva data de compra e data de cadastro na planilha de ativos", async () => {
+    const row = ativoRow({
+      hostname: "NB-DATAS",
+      cliente: "Empresa",
+      data_aquisicao: "2026-01-15",
+      data_cadastro: "2026-01-20",
+    });
+    const { rows } = await parseTabularFile(xlsxFile("ativos_datas.xlsx", ATIVOS_COLUMNS, [row]));
+    expect(rows[0].data_aquisicao).toBe("2026-01-15");
+    expect(rows[0].data_cadastro).toBe("2026-01-20");
+  });
+
   it("faz round-trip: export -> arquivo -> import preserva os dados", async () => {
     const dados = [
       ativoRow({ hostname: "NB-0001", tipo: "Notebook", numero_patrimonio: "PAT-1", numero_serie: "SN1", setor: "TI", status_ciclo_vida: "em_uso", responsavel_email: "a@e.com" }),
