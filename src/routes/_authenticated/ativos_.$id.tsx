@@ -206,10 +206,29 @@ function Page() {
         }
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4 mb-4">
-        <div>
-          <div className="text-sm text-muted-foreground">Valor de aquisição</div>
-          <div className="text-xl font-semibold tabular-nums">{formatValorAquisicao(ativo?.valor_aquisicao)}</div>
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-4 mb-4">
+        <div className="flex flex-wrap items-center gap-6 sm:gap-8">
+          <div>
+            <div className="text-xs text-muted-foreground">Valor de aquisição</div>
+            <div className="text-xl font-semibold tabular-nums">{formatValorAquisicao(ativo?.valor_aquisicao)}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">Data de compra</div>
+            <div className="text-sm font-medium tabular-nums">
+              {ativo?.data_aquisicao
+                ? (() => {
+                    const [ano, mes, dia] = String(ativo.data_aquisicao).slice(0, 10).split("-");
+                    return ano && mes && dia ? `${dia}/${mes}/${ano}` : new Date(ativo.data_aquisicao).toLocaleDateString("pt-BR");
+                  })()
+                : <span className="text-muted-foreground">—</span>}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">Cadastrado no sistema em</div>
+            <div className="text-sm font-medium tabular-nums">
+              {ativo?.created_at ? new Date(ativo.created_at).toLocaleString("pt-BR") : <span className="text-muted-foreground">—</span>}
+            </div>
+          </div>
         </div>
         {canWrite && ativo && <ValorAquisicaoDialog ids={[id]} currentValue={ativo.valor_aquisicao} />}
       </div>

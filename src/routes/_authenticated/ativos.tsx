@@ -80,6 +80,8 @@ type Ativo = {
   valor_aquisicao: number | null;
   comprador: string | null;
   contrato_id?: string | null;
+  created_at?: string | null;
+  data_aquisicao?: string | null;
   usuarios?: { nome: string } | null;
   centros_custo?: { nome: string } | null;
   clientes?: { nome: string } | null;
@@ -111,7 +113,7 @@ function loadAtivosListState() {
 type ListState = ReturnType<typeof loadAtivosListState>;
 
 const ATIVO_SELECT =
-  "id,hostname,tipo,categoria,marca,modelo,numero_serie,numero_patrimonio,setor,status_ciclo_vida,usuario_responsavel_id,centro_custo_id,cliente_id,valor_aquisicao,comprador,usuarios(nome),centros_custo(nome),clientes(nome)";
+  "id,hostname,tipo,categoria,marca,modelo,numero_serie,numero_patrimonio,setor,status_ciclo_vida,usuario_responsavel_id,centro_custo_id,cliente_id,valor_aquisicao,comprador,data_aquisicao,created_at,usuarios(nome),centros_custo(nome),clientes(nome)";
 
 /** Aplica busca e visão salva na query do Supabase. */
 function applyAtivosFilters(query: any, s: ListState) {
@@ -148,6 +150,8 @@ function ativosPageQuery(s: ListState) {
         marca: "marca", modelo: "modelo", setor: "setor", status: "status_ciclo_vida",
         valor_aquisicao: "valor_aquisicao",
         comprador: "comprador",
+        data_aquisicao: "data_aquisicao",
+        created_at: "created_at",
       };
       const sortColumn = (s.sort ? sortColumns[s.sort.id] : "hostname") ?? "hostname";
       const { data, error } = await applyAtivosFilters(
@@ -196,6 +200,7 @@ const initial = {
   hostname: "",
   valor_aquisicao: "",
   comprador: "",
+  data_aquisicao: "",
   tipo: null as string | null,
   categoria: "",
   marca: "",
@@ -315,6 +320,7 @@ function AtivosPage() {
       hostname: r.hostname,
       valor_aquisicao: r.valor_aquisicao == null ? "" : r.valor_aquisicao.toFixed(2).replace(".", ","),
       comprador: r.comprador ?? "",
+      data_aquisicao: r.data_aquisicao ? r.data_aquisicao.slice(0, 10) : "",
       tipo: r.tipo ?? null,
       categoria: r.categoria ?? "",
       marca: r.marca ?? "",
@@ -375,6 +381,7 @@ function AtivosPage() {
       hostname,
       valor_aquisicao: valorAquisicao,
       comprador: form.comprador.trim() || null,
+      data_aquisicao: form.data_aquisicao ? form.data_aquisicao : null,
       tipo: form.tipo?.trim() || null,
       categoria: form.categoria.trim() || null,
       marca: form.marca.trim() || null,
@@ -587,6 +594,45 @@ function AtivosPage() {
       searchValue: (r) => r.comprador, exportValue: (r) => r.comprador,
     },
     {
+      id: "data_aquisicao", header: "Data de compra",
+      accessor: (r) => {
+        if (!r.data_aquisicao) return <span className="text-muted-foreground">—</span>;
+        const [ano, mes, dia] = r.data_aquisicao.slice(0, 10).split("-");
+        const formatted = ano && mes && dia ? `${dia}/${mes}/${ano}` : new Date(r.data_aquisicao).toLocaleDateString("pt-BR");
+        return <span className="tabular-nums text-xs sm:text-sm">{formatted}</span>;
+      },
+      sortValue: (r) => r.data_aquisicao ?? "",
+      searchValue: (r) => {
+        if (!r.data_aquisicao) return "";
+        const [ano, mes, dia] = r.data_aquisicao.slice(0, 10).split("-");
+        return ano && mes && dia ? `${dia}/${mes}/${ano}` : r.data_aquisicao;
+      },
+      exportValue: (r) => {
+        if (!r.data_aquisicao) return "";
+        const [ano, mes, dia] = r.data_aquisicao.slice(0, 10).split("-");
+        return ano && mes && dia ? `${dia}/${mes}/${ano}` : r.data_aquisicao;
+      },
+    },
+    {
+      id: "created_at", header: "Cadastrado em",
+      accessor: (r) => {
+        if (!r.created_at) return <span className="text-muted-foreground">—</span>;
+        const d = new Date(r.created_at);
+        return <span className="tabular-nums text-xs sm:text-sm">{isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR")}</span>;
+      },
+      sortValue: (r) => r.created_at ?? "",
+      searchValue: (r) => {
+        if (!r.created_at) return "";
+        const d = new Date(r.created_at);
+        return isNaN(d.getTime()) ? "" : d.toLocaleDateString("pt-BR");
+      },
+      exportValue: (r) => {
+        if (!r.created_at) return "";
+        const d = new Date(r.created_at);
+        return isNaN(d.getTime()) ? "" : d.toLocaleDateString("pt-BR");
+      },
+    },
+    {
       id: "centro", header: "Centro de custo", defaultHidden: true,
       accessor: (r) => r.centros_custo?.nome ?? "—",
       sortValue: (r) => r.centros_custo?.nome ?? "",
@@ -747,6 +793,29 @@ function AtivosPage() {
           <div>
             <Label htmlFor="ativo-comprador">Comprador</Label>
             <Input id="ativo-comprador" value={form.comprador} onChange={(e) => setForm({ ...form, comprador: e.target.value })} placeholder="Quem comprou o equipamento" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="ativo-data-aquisicao">Data de compra</Label>
+            <Input
+              id="ativo-data-aquisicao"
+              type="date"
+              value={form.data_aquisicao}
+              onChange={(e) => setForm({ ...form, data_aquisicao: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Cadastrado no sistema em</Label>
+            {editing && editing.created_at ? (
+              <div className="h-10 px-3 py-2 rounded-md border border-input bg-muted text-sm flex items-center text-muted-foreground tabular-nums">
+                {new Date(editing.created_at).toLocaleString("pt-BR")}
+              </div>
+            ) : (
+              <div className="h-10 px-3 py-2 rounded-md border border-input bg-muted text-xs flex items-center text-muted-foreground italic">
+                Automático no salvamento
+              </div>
+            )}
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
