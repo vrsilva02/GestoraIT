@@ -103,6 +103,11 @@ function Page() {
 
   async function moveTo(id: string, novo: StatusOS) {
     const patch: any = { status: novo };
+    if (novo === "concluida") {
+      patch.data_conclusao = new Date().toISOString();
+    } else {
+      patch.data_conclusao = null;
+    }
     const { error } = await (supabase as any).from("ordens_servico").update(patch).eq("id", id);
     if (error) return toast.error(error.message);
     toast.success("Status atualizado");
@@ -313,10 +318,8 @@ function EditarOSDialog({ os, open, onOpenChange }: { os: OS; open: boolean; onO
       prioridade,
       descricao_defeito: descricao.trim(),
       observacoes: observacoes.trim() || null,
+      data_conclusao: status === "concluida" ? (os.data_conclusao || new Date().toISOString()) : null,
     };
-    if (status === "concluida" && !os.data_conclusao) {
-      patch.data_conclusao = new Date().toISOString();
-    }
     const { error } = await (supabase as any).from("ordens_servico").update(patch).eq("id", os.id);
     if (error) return toast.error(error.message);
     toast.success("Ordem de serviço atualizada com sucesso");
