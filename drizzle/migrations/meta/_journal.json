@@ -57,6 +57,13 @@
       "when": 1793732000000,
       "tag": "0007_fix_os_status_enum_notify",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795452293406,
+      "tag": "0008_restrict_os_insert",
+      "breakpoints": true
     }
   ]
 }
