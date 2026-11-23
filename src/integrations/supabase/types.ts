@@ -830,40 +830,40 @@ export type Database = {
           criado_por: string | null
           custo_unitario: number | null
           id: string
+          numero_serie: string | null
           observacao: string | null
           ordem_servico_id: string | null
           origem: string
           peca_id: string
           quantidade: number
           tipo: Database["public"]["Enums"]["mov_tipo"]
-                  numero_serie: string | null
-}
+        }
         Insert: {
           created_at?: string
           criado_por?: string | null
           custo_unitario?: number | null
           id?: string
+          numero_serie?: string | null
           observacao?: string | null
           ordem_servico_id?: string | null
           origem?: string
           peca_id: string
           quantidade: number
           tipo: Database["public"]["Enums"]["mov_tipo"]
-                  numero_serie?: string | null
-}
+        }
         Update: {
           created_at?: string
           criado_por?: string | null
           custo_unitario?: number | null
           id?: string
+          numero_serie?: string | null
           observacao?: string | null
           ordem_servico_id?: string | null
           origem?: string
           peca_id?: string
           quantidade?: number
           tipo?: Database["public"]["Enums"]["mov_tipo"]
-                  numero_serie?: string | null
-}
+        }
         Relationships: [
           {
             foreignKeyName: "estoque_movimentacoes_peca_id_fkey"
@@ -1409,10 +1409,10 @@ export type Database = {
           id: string
           modelos_compativeis: string[]
           nome: string
+          numero_serie: string | null
           observacao: string | null
           updated_at: string
-                  numero_serie: string | null
-}
+        }
         Insert: {
           categoria: string
           created_at?: string
@@ -1423,10 +1423,10 @@ export type Database = {
           id?: string
           modelos_compativeis?: string[]
           nome: string
+          numero_serie?: string | null
           observacao?: string | null
           updated_at?: string
-                  numero_serie?: string | null
-}
+        }
         Update: {
           categoria?: string
           created_at?: string
@@ -1437,10 +1437,10 @@ export type Database = {
           id?: string
           modelos_compativeis?: string[]
           nome?: string
+          numero_serie?: string | null
           observacao?: string | null
           updated_at?: string
-                  numero_serie?: string | null
-}
+        }
         Relationships: []
       }
       produtos_aliases: {
