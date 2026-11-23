@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Combobox } from "@/components/combobox";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { friendlyError } from "@/lib/errors";
 import { Boxes, PackagePlus, AlertTriangle, Download } from "lucide-react";
 import { downloadXLSX } from "@/lib/export";
 
@@ -292,16 +293,19 @@ function NovaMovDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
   }
   async function salvar() {
     if (!pecaId || !qtd) return toast.error("Selecione a peça e a quantidade.");
-    const { error } = await (supabase as any).from("estoque_movimentacoes").insert({
+    const payload: Record<string, any> = {
       peca_id: pecaId,
       tipo,
       quantidade: Number(qtd),
       custo_unitario: custo ? Number(custo) : null,
-      numero_serie: numeroSerie.trim() || null,
       observacao: obs.trim() || null,
       origem: "manual",
-    });
-    if (error) return toast.error(error.message);
+    };
+    if (numeroSerie.trim()) {
+      payload.numero_serie = numeroSerie.trim();
+    }
+    const { error } = await (supabase as any).from("estoque_movimentacoes").insert(payload);
+    if (error) return toast.error(friendlyError(error));
     toast.success("Movimentação registrada com sucesso");
     qc.invalidateQueries({ queryKey: ["vw_estoque_saldo"] });
     qc.invalidateQueries({ queryKey: ["vw_pecas_reposicao"] });

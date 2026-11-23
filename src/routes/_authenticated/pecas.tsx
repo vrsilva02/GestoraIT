@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Wrench, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { friendlyError } from "@/lib/errors";
 import { useConfirm } from "@/components/confirm-dialog";
 
 export const Route = createFileRoute("/_authenticated/pecas")({
@@ -85,20 +86,22 @@ function Page() {
     setOpen(true);
   }
   async function save() {
-    const payload = {
+    const payload: Record<string, any> = {
       nome: form.nome.trim(),
       categoria: form.categoria.trim(),
       fabricante: form.fabricante.trim() || null,
-      numero_serie: form.numero_serie.trim() || null,
       modelos_compativeis: form.modelos_compativeis.split(",").map((s) => s.trim()).filter(Boolean),
       estoque_minimo: Number(form.estoque_minimo) || 0,
       custo_unitario: form.custo_unitario ? Number(form.custo_unitario) : null,
       fornecedor_padrao: form.fornecedor_padrao.trim() || null,
     };
+    if (form.numero_serie.trim()) {
+      payload.numero_serie = form.numero_serie.trim();
+    }
     const { error } = editing
       ? await (supabase as any).from("pecas_catalogo").update(payload).eq("id", editing.id)
       : await (supabase as any).from("pecas_catalogo").insert(payload);
-    if (error) return toast.error(error.message);
+    if (error) return toast.error(friendlyError(error));
     toast.success("Salvo");
     qc.invalidateQueries({ queryKey: ["pecas_catalogo"] });
     qc.invalidateQueries({ queryKey: ["vw_estoque_saldo"] });

@@ -26,6 +26,16 @@ export function friendlyError(err: unknown, fallback = "Ocorreu um erro. Tente n
   if (code === "23505" || msg.includes("duplicate key") || msg.includes("unique constraint")) {
     return "Já existe um registro com esses dados.";
   }
+  if (
+    code === "42703" ||
+    msg.includes("schema cache") ||
+    (msg.includes("column") && msg.includes("does not exist"))
+  ) {
+    return "Estrutura do banco de dados desatualizada (coluna não encontrada). Execute o script SQL no editor do Lovable.";
+  }
+  if (code === "22p02" && (msg.includes("enum") || msg.includes("invalid input value"))) {
+    return "Valor não reconhecido pelo banco de dados. Execute o script SQL no editor do Lovable.";
+  }
   if (msg.includes("jwt") || msg.includes("unauthorized")) {
     return "Sessão expirada. Faça login novamente.";
   }
