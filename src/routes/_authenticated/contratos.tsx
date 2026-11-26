@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Pencil, Trash2, FileStack } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { friendlyError } from "@/lib/errors";
 import { useConfirm } from "@/components/confirm-dialog";
 import { AditivosDialog } from "@/components/aditivos-dialog";
 import { Combobox } from "@/components/combobox";
@@ -42,8 +43,8 @@ type Row = {
   clientes?: { nome: string } | null;
 };
 
-const TIPOS = ["EA", "MPSA", "Open Value", "NCE", "Perpetua", "SaaS", "Outro"];
-const initial = { fornecedor: "", numero_contrato: "", tipo_contrato: "SaaS", data_inicio: "", data_fim: "", quantidade_seats: 0, valor_total: "", unidade_id: null as string | null, centro_custo_id: null as string | null, cliente_id: null as string | null };
+const TIPOS = ["CSP", "EA", "MPSA", "Open Value", "NCE", "Perpetua", "SaaS", "Outro"];
+const initial = { fornecedor: "", numero_contrato: "", tipo_contrato: "Perpetua", data_inicio: "", data_fim: "", quantidade_seats: 0, valor_total: "", unidade_id: null as string | null, centro_custo_id: null as string | null, cliente_id: null as string | null };
 
 function urgencyBadge(dataFim: string | null) {
   if (!dataFim) return <Badge variant="outline">sem vencimento</Badge>;
@@ -92,7 +93,7 @@ function Page() {
     setForm({
       fornecedor: r.fornecedor,
       numero_contrato: r.numero_contrato ?? "",
-      tipo_contrato: r.tipo_contrato ?? "SaaS",
+      tipo_contrato: r.tipo_contrato ?? "Perpetua",
       data_inicio: r.data_inicio,
       data_fim: r.data_fim ?? "",
       quantidade_seats: r.quantidade_seats,
@@ -119,7 +120,7 @@ function Page() {
     const { error } = editing
       ? await supabase.from("contratos").update(payload).eq("id", editing.id)
       : await supabase.from("contratos").insert(payload);
-    if (error) return toast.error(error.message);
+    if (error) return toast.error(friendlyError(error));
     toast.success("Salvo");
     qc.invalidateQueries({ queryKey: ["contratos"] });
     qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -140,7 +141,7 @@ function Page() {
     });
     if (!ok) return;
     const { error } = await supabase.from("contratos").delete().eq("id", row.id);
-    if (error) return toast.error(error.message);
+    if (error) return toast.error(friendlyError(error));
     qc.invalidateQueries({ queryKey: ["contratos"] });
   }
 
