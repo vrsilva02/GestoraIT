@@ -3,6 +3,7 @@ import { criarAlocacao } from "./licencas";
 
 const mockStore = {
   alocacoes: [] as any[],
+  ativos: {} as Record<string, { tipo?: string | null; categoria?: string | null }>,
 };
 
 vi.mock("@/integrations/supabase/client", () => {
@@ -10,17 +11,25 @@ vi.mock("@/integrations/supabase/client", () => {
     supabase: {
       from: (table: string) => {
         const chain: any = {
+          _eq: {} as Record<string, any>,
           select: (columns?: string) => {
             // Se for insert().select()
             if (chain._isInsert) return chain;
             return chain;
           },
-          eq: () => chain,
+          eq: (col: string, val: any) => {
+            chain._eq[col] = val;
+            return chain;
+          },
           neq: () => chain,
           in: () => chain,
           is: () => chain,
           limit: () => chain,
           maybeSingle: async () => {
+            if (table === "ativos") {
+              const ativo = mockStore.ativos[chain._eq.id] ?? { tipo: "NOTEBOOK", categoria: "Notebook" };
+              return { data: ativo, error: null };
+            }
             if (table === "alocacoes") {
               const found = mockStore.alocacoes.find(a => !a.data_fim);
               return { data: found || null, error: null };
@@ -89,5 +98,22 @@ describe("Regras de Negócio de Licenças - Integridade (Mocked)", () => {
     const sucessos = resultados.filter(r => r.ok).length;
     
     expect(sucessos).toBe(1);
+  });
+
+  it("não deve permitir associar licença de software a Nobreak ou Monitor", async () => {
+    mockStore.alocacoes = [];
+    mockStore.ativos = {
+      "atv-nobreak": { tipo: "NOBREAK 600VA", categoria: "Nobreak Tipo I" },
+      "atv-monitor": { tipo: "MONITOR", categoria: "Monitor Tipo II" },
+    };
+
+    const rNobreak = await criarAlocacao({ licenca_id: licencaId, ativo_id: "atv-nobreak" });
+    expect(rNobreak.ok).toBe(false);
+    expect(rNobreak.error).toContain("Nobreak e Monitor");
+
+    const rMonitor = await criarAlocacao({ licenca_id: licencaId, ativo_id: "atv-monitor" });
+    expect(rMonitor.ok).toBe(false);
+    expect(rMonitor.error).toContain("Nobreak e Monitor");
+    expect(mockStore.alocacoes).toHaveLength(0);
   });
 });
