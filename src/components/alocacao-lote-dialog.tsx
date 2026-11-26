@@ -16,8 +16,9 @@ import { Combobox } from "@/components/combobox";
 import { toast } from "sonner";
 import { fetchAll } from "@/lib/fetch-all";
 import { alocarChavesEmLote, type Chave } from "@/lib/chaves-licenca";
+import { isAtivoSemSoftware } from "@/lib/ativos-opcoes";
 
-type Ativo = { id: string; hostname: string; numero_patrimonio: string | null };
+type Ativo = { id: string; hostname: string; numero_patrimonio: string | null; tipo?: string | null; categoria?: string | null };
 
 /**
  * Aloca N chaves disponíveis de uma licença a N ativos distintos de uma vez.
@@ -46,7 +47,7 @@ export function AlocacaoLoteDialog({
     queryKey: ["ativos-lite", "lote"],
     enabled: open,
     queryFn: async () =>
-      (await fetchAll<Ativo>("ativos", "id,hostname,numero_patrimonio", (q) => q.order("hostname"))).data,
+      (await fetchAll<Ativo>("ativos", "id,hostname,numero_patrimonio,tipo,categoria", (q) => q.order("hostname"))).data.filter((a) => !isAtivoSemSoftware(a)),
   });
 
   const { data: chaves = [] } = useQuery({

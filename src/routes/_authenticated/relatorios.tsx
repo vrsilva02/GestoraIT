@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useConfirm } from "@/components/confirm-dialog";
 import { useRealtimeInvalidate } from "@/hooks/use-realtime-invalidate";
+import { isAtivoSemSoftware } from "@/lib/ativos-opcoes";
 
 export const Route = createFileRoute("/_authenticated/relatorios")({
   component: Page,
@@ -421,7 +422,7 @@ async function runReport(tipo: ReportType, f: Filters): Promise<{ columns: strin
       };
     }
   } else if (tipo === "gap_edr") {
-    let q = supabase.from("ativos").select("id, hostname, tipo, status_ciclo_vida, unidade_id, unidades(nome)");
+    let q = supabase.from("ativos").select("id, hostname, tipo, categoria, status_ciclo_vida, unidade_id, unidades(nome)");
     q = q.eq("status_ciclo_vida", f.statusAtivo ?? "ativo");
     if (f.unidadeId) q = q.eq("unidade_id", f.unidadeId);
     
@@ -437,7 +438,7 @@ async function runReport(tipo: ReportType, f: Filters): Promise<{ columns: strin
     if (alocErr) throw new Error(`Erro ao buscar alocações EDR: ${alocErr.message}`);
 
     const cobertos = new Set((aloc ?? []).map((a: any) => a.ativo_id));
-    const sem = (ativos ?? []).filter((a: any) => !cobertos.has(a.id));
+    const sem = (ativos ?? []).filter((a: any) => !cobertos.has(a.id) && !isAtivoSemSoftware(a));
     
     result = {
       columns: ["Hostname", "Tipo", "Unidade", "Status"],

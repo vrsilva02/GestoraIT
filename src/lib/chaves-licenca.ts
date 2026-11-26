@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetch-all";
 import { logAction } from "@/lib/audit";
 import { friendlyError } from "@/lib/errors";
+import { isAtivoSemSoftware } from "@/lib/ativos-opcoes";
 
 export type TipoLicenca = "OEM" | "Retail" | "Volume" | "CSP";
 export type StatusChave = "disponivel" | "alocada" | "expirada" | "revogada";
@@ -225,6 +226,15 @@ export async function alocarChave(input: {
   observacao?: string | null;
 }): Promise<{ ok: boolean; error?: string }> {
   const hoje = new Date().toISOString().slice(0, 10);
+
+  const { data: ativoRef } = await supabase
+    .from("ativos")
+    .select("tipo, categoria")
+    .eq("id", input.ativoId)
+    .maybeSingle();
+  if (isAtivoSemSoftware(ativoRef as { tipo?: string | null; categoria?: string | null } | null)) {
+    return { ok: false, error: "Ativos do tipo Nobreak e Monitor não podem receber associação de licenças de software." };
+  }
 
   const { data: chave, error: errSel } = await supabase
     .from("licenses")

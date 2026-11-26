@@ -32,6 +32,7 @@ import { useRealtimeInvalidate } from "@/hooks/use-realtime-invalidate";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { DesempenhoSemanalCard } from "@/components/desempenho-semanal-card";
+import { fetchAtivosSemSoftwareIds } from "@/components/edr-badge";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
@@ -83,7 +84,7 @@ function useDashboardData() {
     queryKey: ["dashboard"],
     refetchInterval: 30_000,
     queryFn: async () => {
-      const [elp, ativos, vencendo, indicadores, ocioseFin, risco, custoOc, gapEdr, tco, osAbertas, osAguardando, pecasRep, defRec] = await Promise.all([
+      const [elp, ativos, vencendo, indicadores, ocioseFin, risco, custoOc, gapEdr, tco, osAbertas, osAguardando, pecasRep, defRec, semSoftwareIds] = await Promise.all([
         supabase.from("vw_elp").select("*"),
         supabase.from("ativos").select("id, status_ciclo_vida, centro_custo_id, centros_custo(nome)"),
         supabase.from("vw_contratos_vencendo").select("id,dias_para_vencer,urgencia,fornecedor,numero_contrato,data_fim"),
@@ -97,6 +98,7 @@ function useDashboardData() {
         (supabase as any).from("ordens_servico").select("id", { count: "exact", head: true }).eq("status", "aguardando_peca"),
         (supabase as any).from("vw_pecas_reposicao").select("peca_id"),
         (supabase as any).from("vw_ativos_defeito_recorrente").select("ativo_id"),
+        fetchAtivosSemSoftwareIds(),
       ]);
       return {
         elp: (elp.data ?? []) as ElpRow[],
@@ -108,7 +110,7 @@ function useDashboardData() {
         ocioseFin: (ocioseFin.data ?? []) as Array<{ produto_id: string; nome_oficial: string; valor_ocioso: number }>,
         risco: (risco.data ?? []) as Array<{ score: number }>,
         custoOciosasMensal: (custoOc.data ?? []).reduce((a: number, r: any) => a + Number(r.custo_mensal_desperdicado ?? 0), 0),
-        gapEdrRaw: (gapEdr.data ?? []) as any[],
+        gapEdrRaw: ((gapEdr.data ?? []) as any[]).filter((g) => !semSoftwareIds.has(g.ativo_id)),
         tco: (tco.data ?? []) as Array<{ ativo_id: string; tco_anual_estimado: number | null }>,
         osAbertasCount: (osAbertas as any).count ?? 0,
         osAguardandoPecaCount: (osAguardando as any).count ?? 0,

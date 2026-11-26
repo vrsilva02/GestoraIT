@@ -19,7 +19,7 @@ import { friendlyError } from "@/lib/errors";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Combobox } from "@/components/combobox";
 import { ComboboxCreatable } from "@/components/combobox-creatable";
-import { comValorAtual } from "@/lib/ativos-opcoes";
+import { comValorAtual, isAtivoSemSoftware } from "@/lib/ativos-opcoes";
 import { parseValorAquisicao } from "@/lib/valor-aquisicao";
 import { ValorAquisicaoDialog } from "@/components/valor-aquisicao-dialog";
 import { CompradorAtivoDialog } from "@/components/comprador-ativo-dialog";
@@ -531,7 +531,7 @@ function AtivosPage() {
       accessor: (r) => (
         <span className="font-medium inline-flex items-center gap-1.5">
           <Link to="/ativos/$id" params={{ id: r.id }} className="hover:underline">{r.hostname}</Link>
-          <EdrBadge ativoId={r.id} set={edrSet} />
+          {!isAtivoSemSoftware(r) && <EdrBadge ativoId={r.id} set={edrSet} />}
         </span>
       ),
       sortValue: (r) => r.hostname.toLowerCase(),

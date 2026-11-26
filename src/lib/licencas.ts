@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { logAction } from "@/lib/audit";
+import { isAtivoSemSoftware } from "@/lib/ativos-opcoes";
 
 /**
  * Libera uma chave do módulo Chaves de Licença quando uma alocação é encerrada.
@@ -157,8 +158,17 @@ export async function criarAlocacao(input: {
   observacao?: string | null;
   chave_id?: string | null;
 }): Promise<{ ok: boolean; error?: string }> {
-  // 1. Validar duplicidade apenas quando a alocação está vinculada a um ativo.
+  // 1. Validar se o ativo aceita software e verificar duplicidade.
   if (input.ativo_id) {
+    const { data: ativoRef } = await supabase
+      .from("ativos")
+      .select("tipo, categoria")
+      .eq("id", input.ativo_id)
+      .maybeSingle();
+    if (isAtivoSemSoftware(ativoRef as { tipo?: string | null; categoria?: string | null } | null)) {
+      return { ok: false, error: "Ativos do tipo Nobreak e Monitor não podem receber associação de licenças de software." };
+    }
+
     const { data: existente, error: errExistente } = await supabase
       .from("alocacoes")
       .select("id, chave_id")

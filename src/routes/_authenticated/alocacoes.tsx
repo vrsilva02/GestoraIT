@@ -22,6 +22,7 @@ import { fetchAll } from "@/lib/fetch-all";
 import { AlocacaoLoteDialog } from "@/components/alocacao-lote-dialog";
 import { useRealtimeInvalidate } from "@/hooks/use-realtime-invalidate";
 import { isOffice2019ProfessionalPlus, contarAtivosPorChave } from "@/lib/chave-capacidade";
+import { isAtivoSemSoftware } from "@/lib/ativos-opcoes";
 
 export const Route = createFileRoute("/_authenticated/alocacoes")({
   component: Page,
@@ -246,7 +247,7 @@ function Page() {
     const q = term.trim().replace(/[%_,()]/g, " ");
     let query = supabase
       .from("ativos")
-      .select("id, hostname, numero_patrimonio, clientes(nome)")
+      .select("id, hostname, tipo, categoria, numero_patrimonio, clientes(nome)")
       .neq("status_ciclo_vida", "baixado");
 
     if (q) {
@@ -255,7 +256,7 @@ function Page() {
 
     const { data, error } = await query.order("hostname").limit(100);
     if (error || !data) return [];
-    return data.map((a: any) => ({
+    return data.filter((a: any) => !isAtivoSemSoftware(a)).map((a: any) => ({
       value: a.id,
       label: a.clientes?.nome ? `${a.hostname} (${a.clientes.nome})` : a.hostname,
       hint: a.numero_patrimonio ? `Patrimônio: ${a.numero_patrimonio}` : (a.clientes?.nome ? `Cliente: ${a.clientes.nome}` : undefined),

@@ -14,6 +14,7 @@ import { TcoCard } from "@/components/tco-card";
 import { ValorAquisicaoDialog } from "@/components/valor-aquisicao-dialog";
 import { formatValorAquisicao } from "@/lib/valor-aquisicao";
 import { EdrBadge, useGapEdrSet } from "@/components/edr-badge";
+import { isAtivoSemSoftware } from "@/lib/ativos-opcoes";
 import { Trash2, Plus, Server, ServerCog, Boxes, ExternalLink, ArrowLeft, KeyRound, Unlink } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -112,6 +113,7 @@ function Page() {
     },
   });
 
+  const semSoftware = isAtivoSemSoftware(ativo);
   const jaServ = new Set((servicos ?? []).map((v: any) => v.servicos?.id));
   const jaFilhos = new Set((filhos ?? []).map((v: any) => v.filho?.id));
 
@@ -148,6 +150,7 @@ function Page() {
   }
 
   async function vincLic() {
+    if (semSoftware) return toast.error("Ativos do tipo Nobreak e Monitor não possuem associação de software.");
     if (!licId) return toast.error("Selecione a licença");
     const { criarAlocacao } = await import("@/lib/licencas");
     const r = await criarAlocacao({
@@ -185,7 +188,7 @@ function Page() {
         title={
           <span className="inline-flex items-center gap-2">
             {ativo?.hostname ?? "Ativo"}
-            <EdrBadge ativoId={id} set={edrSet} />
+            {!semSoftware && <EdrBadge ativoId={id} set={edrSet} />}
           </span>
         }
         description={
@@ -313,11 +316,15 @@ function Page() {
       <Card className="mt-4">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm flex items-center gap-2"><KeyRound className="h-4 w-4" /> Licenças Atribuídas</CardTitle>
-          {canWrite && <Button size="sm" variant="outline" onClick={() => setOpenLic(true)}><Plus className="h-3 w-3 mr-1" />Atribuir licença</Button>}
+          {canWrite && !semSoftware && <Button size="sm" variant="outline" onClick={() => setOpenLic(true)}><Plus className="h-3 w-3 mr-1" />Atribuir licença</Button>}
         </CardHeader>
         <CardContent>
           {(alocacoes ?? []).length === 0 ? (
-            <div className="text-sm text-muted-foreground py-4 text-center">Nenhuma licença vinculada a este ativo.</div>
+            <div className="text-sm text-muted-foreground py-4 text-center">
+              {semSoftware
+                ? "Ativos do tipo Nobreak e Monitor não possuem associação de licenças de software."
+                : "Nenhuma licença vinculada a este ativo."}
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
               {(alocacoes ?? []).map((a: any) => (

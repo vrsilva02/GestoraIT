@@ -12,6 +12,7 @@ import { AlertTriangle, FileWarning, Snowflake, XCircle, ShieldCheck, ShieldAler
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Combobox } from "@/components/combobox";
+import { fetchAtivosSemSoftwareIds } from "@/components/edr-badge";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -45,11 +46,12 @@ function useAlertas() {
   return useQuery({
     queryKey: ["alertas"],
     queryFn: async () => {
-      const [vc, elp, oc, gap] = await Promise.all([
+      const [vc, elp, oc, gap, semSoftwareIds] = await Promise.all([
         supabase.from("vw_contratos_vencendo").select("*"),
         supabase.from("vw_elp").select("*"),
         supabase.from("vw_licencas_ociosas").select("*"),
         supabase.from("vw_gap_edr").select("*"),
+        fetchAtivosSemSoftwareIds(),
       ]);
       const alertas: Alerta[] = [];
 
@@ -98,6 +100,7 @@ function useAlertas() {
       }
 
       for (const g of (gap.data ?? []) as any[]) {
+        if (semSoftwareIds.has(g.ativo_id)) continue;
         alertas.push({
           id: `e-${g.ativo_id}`,
           tipo: "edr",

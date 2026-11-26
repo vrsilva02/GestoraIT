@@ -36,3 +36,19 @@ export function comValorAtual(opcoes: readonly string[], atual?: string | null):
   if (!v || opcoes.some((o) => o.toLowerCase() === v.toLowerCase())) return [...opcoes];
   return [...opcoes, v];
 }
+
+const SEM_SOFTWARE_REGEX = /(nobreak|no[\s-]?break|monitor)/i;
+
+/**
+ * Retorna true para tipos/categorias de ativos que não possuem software nem licenças
+ * (ex.: Nobreak e Monitor), não devendo receber licenças nem alertas de "sem EDR".
+ */
+export function isAtivoSemSoftware(
+  ativo?: { tipo?: string | null; categoria?: string | null } | null,
+): boolean {
+  if (!ativo) return false;
+  return SEM_SOFTWARE_REGEX.test(`${ativo.tipo ?? ""} ${ativo.categoria ?? ""}`);
+}
+
+export const ATIVOS_SEM_SOFTWARE_OR_FILTER =
+  "tipo.ilike.%nobreak%,tipo.ilike.%no-break%,tipo.ilike.%no break%,tipo.ilike.%monitor%,categoria.ilike.%nobreak%,categoria.ilike.%no-break%,categoria.ilike.%no break%,categoria.ilike.%monitor%";

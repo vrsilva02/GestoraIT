@@ -30,6 +30,7 @@ import { friendlyError } from "@/lib/errors";
 import { MaskedKey } from "@/components/masked-key";
 import { useRealtimeInvalidate } from "@/hooks/use-realtime-invalidate";
 import { fetchAll } from "@/lib/fetch-all";
+import { isAtivoSemSoftware } from "@/lib/ativos-opcoes";
 
 const LicencasImportExport = lazy(() =>
   import("@/components/licencas-import-export").then((m) => ({ default: m.LicencasImportExport })),
@@ -1097,12 +1098,12 @@ function VincularDialog({
   const { data: ativos } = useQuery({
     queryKey: ["ativos-search"],
     queryFn: async () => {
-      const { data } = await fetchAll<{ id: string; hostname: string }>(
+      const { data } = await fetchAll<{ id: string; hostname: string; tipo?: string | null; categoria?: string | null }>(
         "ativos",
-        "id,hostname",
+        "id,hostname,tipo,categoria",
         (q) => q.neq("status_ciclo_vida", "baixado").order("hostname"),
       );
-      return data;
+      return data.filter((a) => !isAtivoSemSoftware(a));
     },
     enabled: open,
   });
